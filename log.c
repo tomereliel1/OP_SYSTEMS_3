@@ -2,7 +2,7 @@
 #include <string.h>
 #include "log.h"
 
-#define INIT_BUFFER_SIZE = 1024;
+#define INIT_BUFFER_SIZE 1024
 
 // Opaque struct definition
 struct Server_Log {
@@ -111,20 +111,24 @@ void add_to_log(server_log log, const char* data, int data_len) {
             log->total_capacity = log->total_capacity * 2;
         } else {
             //check this
-            log->active_writers = 0;
-            pthread_cond_broadcast(&log->);
+            pthread_mutex_lock(&log->lock);
+            log->writers_inside--;
+            if(log->writers_inside == 0){
+                pthread_cond_broadcast(&log->read_allowed);
+                pthread_cond_signal(&log->write_allowed);
+            }
             pthread_mutex_unlock(&log->lock);
             return;
         }
     }
-    memcpy(log->buffer + log->size, data, data_len);
-    log->size += data_len;
-    log->buffer[log->size] = '\0';
+    memcpy(log->buffer + log->current_size, data, data_len);
+    log->current_size += data_len;
+    log->buffer[log->current_size] = '\0';
 
     // check this
     pthread_mutex_lock(&log->lock);
     log->writers_inside--;
-    if(log->writers_inside){
+    if(log->writers_inside == 0){
         pthread_cond_broadcast(&log->read_allowed);
         pthread_cond_signal(&log->write_allowed);
     }

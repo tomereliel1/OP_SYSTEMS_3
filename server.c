@@ -62,7 +62,7 @@ typedef struct {
 } queue_t;
 
 queue_t request_queue;
-server_log log = create_log();
+server_log log_request;
 
 void init_queue(queue_t* q, int size){
     q->requests = (request_t **) malloc(sizeof(request_t *) * size);
@@ -109,11 +109,7 @@ void update_finish_request(queue_t *q){
     pthread_mutex_unlock(&q->lock);
 }
 
-void
-
-
-
-void* worker_thread(void*){
+void *worker_thread(void* arg){
     /* todo remove condition */
     int i = 0;
     threads_stats t = malloc(sizeof(struct Threads_stats));
@@ -125,20 +121,19 @@ void* worker_thread(void*){
     while(1){
         request_t* request = remove_from_queue(&request_queue);
         gettimeofday(&dispatch, NULL);
-        int connfd = request.connfd;
-        struct timeval arrival = request.arrival_time;
-        requestHandle(connfd, arrival, dispatch, t, log);
+        int connfd = request->connfd;
+        struct timeval arrival = request->arrival_time;
+        requestHandle(connfd, arrival, dispatch, t, log_request);
         update_finish_request(&request_queue);
         free(request);
     }
+    return NULL;
 }
 
 int main(int argc, char *argv[])
 {
-    // Create the global server log
-
-
-
+    // Create the global server log_request
+    log_request = create_log();
     int listenfd, connfd, port, clientlen;
     struct sockaddr_in clientaddr;
     int thread_num;
@@ -161,15 +156,15 @@ int main(int argc, char *argv[])
     listenfd = Open_listenfd(port);
     while (1) {
         clientlen = sizeof(clientaddr);
-        connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
+        connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t * ) & clientlen);
         struct timeval arrival;
         gettimeofday(&arrival, NULL);
-        request_t* request = (request_t*) malloc(sizeof(request_t));
+        request_t *request = (request_t *)malloc(sizeof(request_t));
         request->connfd = connfd;
         request->arrival_time = arrival;
         append_to_queue(&request_queue, request);
         // TODO: HW3 — Record the request arrival time here
-
+    }
 }
 
 /*
