@@ -200,7 +200,7 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch, thre
     Rio_readinitb(&rio, fd);
     Rio_readlineb(&rio, buf, MAXLINE);
     sscanf(buf, "%s %s %s", method, uri, version);
-
+    t_stats->total_req += 1;
     if (!strcasecmp(method, "GET")) {
         requestReadhdrs(&rio);
 
@@ -219,7 +219,7 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch, thre
                              arrival, dispatch, t_stats);
                 return;
             }
-
+            t_stats->stat_req += 1;
             requestServeStatic(fd, filename, sbuf.st_size, arrival, dispatch, t_stats);
 
         } else {
@@ -229,19 +229,22 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch, thre
                              arrival, dispatch, t_stats);
                 return;
             }
-
+            t_stats->dynm_req += 1;
             requestServeDynamic(fd, filename, cgiargs, arrival, dispatch, t_stats);
         }
-
+        char buff[MAXBUF];
+        int length = append_stats(buff, t_stats, arrival, dispatch);
+        add_to_log(log, buff, length);
         // TODO: add log entry using add_to_log(server_log log, const char* data, int data_len);
 
     } else if (!strcasecmp(method, "POST")) {
         requestServePost(fd, arrival, dispatch, t_stats, log);
-
+        t_stats->post_req += 1;
     } else {
         requestError(fd, method, "501", "Not Implemented",
                      "OS-HW3 Server does not implement this method",
                      arrival, dispatch, t_stats);
+        t_stats->total_req -= 1;
         return;
     }
 }

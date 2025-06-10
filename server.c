@@ -22,7 +22,7 @@ void getargs(int *port, int argc, char *argv[])
     *port = atoi(argv[1]);
 }
 
-void get_tread_number(int *thread_num, int argc, char *argv[])
+void get_thread_number(int *thread_num, int argc, char *argv[])
 {
     if (argc < 3) {
         fprintf(stderr, "Usage: %s <port>\n", argv[0]);
@@ -50,7 +50,7 @@ typedef struct {
 } request_t;
 
 typedef struct {
-    request_t * requests;
+    request_t **requests;
     int front;
     int rear;
     int size_active;
@@ -61,8 +61,11 @@ typedef struct {
     pthread_cond_t not_full;
 } queue_t;
 
+queue_t request_queue;
+server_log log = create_log();
+
 void init_queue(queue_t* q, int size){
-    q->requests = (request_t*) malloc(sizeof(request_t) * size);
+    q->requests = (request_t **) malloc(sizeof(request_t *) * size);
     q->front = 0;
     q->rear = 0;
     q->size_active = 0;
@@ -73,7 +76,7 @@ void init_queue(queue_t* q, int size){
     pthread_cond_init(&q->not_full, NULL);
 }
 
-void append_to_queue(queue_t *q, request_t request){
+void append_to_queue(queue_t *q, request_t* request){
     pthread_mutex_lock(&q->lock);
     while (q->size_active + q->size_pending == q->max_size){
         pthread_cond_wait(&q->not_full, &q->lock);
@@ -86,32 +89,31 @@ void append_to_queue(queue_t *q, request_t request){
     pthread_mutex_unlock(&q->lock);
 }
 
-request_t remove_from_queue(queue_t *q){
+request_t* remove_from_queue(queue_t *q){
     pthread_mutex_lock(&q->lock);
     while (q->size_pending == 0){
         pthread_cond_wait(&q->not_empty, &q->lock);
     }
-    request_t request = q->data[q->front];
-    q->front = (q->front + 1) % q->max_size;;
+    request_t* request = q->requests[q->front];
+    q->front = (q->front + 1) % q->max_size;
     q->size_pending -= 1;
     q->size_active += 1;
-    pthread_cond_signal(&q->not_full);
-    pthread_mutex_unlock(&lock);
+    pthread_mutex_unlock(&q->lock);
     return request;
 }
 
 void update_finish_request(queue_t *q){
     pthread_mutex_lock(&q->lock);
     q->size_active--;
-
+    pthread_cond_signal(&q->not_full);
+    pthread_mutex_unlock(&q->lock);
 }
 
 void
 
-queue_t request_queue;
-server_log log = create_log();
 
-void worker_thread(){
+
+void* worker_thread(void*){
     /* todo remove condition */
     int i = 0;
     threads_stats t = malloc(sizeof(struct Threads_stats));
@@ -120,12 +122,14 @@ void worker_thread(){
     t->dynm_req = 0;       // Dynamic request count
     t->total_req = 0;      // Total request count
     struct timeval dispatch;
-    while(i<10){
-        request_t request = remove_from_queue(request_queue);
+    while(1){
+        request_t* request = remove_from_queue(&request_queue);
         gettimeofday(&dispatch, NULL);
         int connfd = request.connfd;
         struct timeval arrival = request.arrival_time;
         requestHandle(connfd, arrival, dispatch, t, log);
+        update_finish_request(&request_queue);
+        free(request);
     }
 }
 
@@ -140,14 +144,14 @@ int main(int argc, char *argv[])
     int thread_num;
     int queue_size;
     getargs(&port, argc, argv);
-    get_tread_number(&thread_num, argc, argv);
+    get_thread_number(&thread_num, argc, argv);
     get_queue_size(&queue_size, argc, argv);
     init_queue(&request_queue, queue_size);
     pthread_t* pool = (pthread_t*) malloc(sizeof(pthread_t) * thread_num);
 
     int i;
     for (i = 0; i < thread_num ; i++){
-        if (pthread_create(&pool[i], NULL, handleRequest, NULL) != 0){
+        if (pthread_create(&pool[i], NULL, worker_thread, NULL) != 0){
             exit(-1);
         }
     }
@@ -158,9 +162,17 @@ int main(int argc, char *argv[])
     while (1) {
         clientlen = sizeof(clientaddr);
         connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
-
+        struct timeval arrival;
+        gettimeofday(&arrival, NULL);
+        request_t* request = (request_t*) malloc(sizeof(request_t));
+        request->connfd = connfd;
+        request->arrival_time = arrival;
+        append_to_queue(&request_queue, request);
         // TODO: HW3 — Record the request arrival time here
 
+}
+
+/*
         // DEMO PURPOSE ONLY:
         // This is a dummy request handler that immediately processes
         // the request in the main thread without concurrency.
@@ -189,6 +201,6 @@ int main(int argc, char *argv[])
     destroy_log(log);
 
     // TODO: HW3 — Add cleanup code for thread pool and queue
-}
-
 worker()
+
+ */
