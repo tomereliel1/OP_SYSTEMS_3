@@ -60,19 +60,19 @@ void destroy_log(server_log log) {
     pthread_cond_destroy(&log->read_allowed);
     free(log);
     // TODO: Free all internal resources used by the log
-    free(log);
 }
 
 // Returns dummy log content as string (stub)
 int get_log(server_log log, char** dst) {
     // TODO: Return the full contents of the log as a dynamically allocated string
     // This function should handle concurrent access
+    printf("we are doing gettttttttttttttttttttt size is %d\n\n\n\n\n\n\n\n" ,log->current_size);
     pthread_mutex_lock(&log->lock);
     while (log->writers_inside > 0 || log->writers_waiting > 0){
         pthread_cond_wait(&log->read_allowed, &log->lock);
     }
     log->readers_inside++;
-    pthread_mutex_unlock();
+    pthread_mutex_unlock(&log->lock);
     /*
     const char* dummy = "Log is not implemented.\n";
     int len = strlen(dummy);
@@ -106,7 +106,6 @@ void add_to_log(server_log log, const char* data, int data_len) {
     if (new_length > log->total_capacity){
         char* new_buffer = realloc(log->buffer, log->total_capacity * 2);
         if (new_buffer){
-            free(log->buffer);
             log->buffer = new_buffer;
             log->total_capacity = log->total_capacity * 2;
         } else {

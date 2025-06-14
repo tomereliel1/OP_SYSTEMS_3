@@ -16,27 +16,39 @@
 void getargs(int *port, int argc, char *argv[])
 {
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <port>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <port><threads><queue_size>\n", argv[0]);
         exit(1);
     }
     *port = atoi(argv[1]);
+    printf("\n\nport is %d\n\n", *port);
 }
 
 void get_thread_number(int *thread_num, int argc, char *argv[])
 {
     if (argc < 3) {
-        fprintf(stderr, "Usage: %s <port>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <port><threads><queue_size>\n", argv[0]);
         exit(1);
     }
     *thread_num = atoi(argv[2]);
+    if (*thread_num <= 0){
+        fprintf(stderr, "Not a valid thread num\n");
+        exit(1);
+    }
+    printf("\n\nthread num is %d\n\n", *thread_num);
 }
 void get_queue_size(int *queue_size, int argc, char *argv[])
 {
     if (argc < 4) {
-        fprintf(stderr, "Usage: %s <port>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <port><threads><queue_size>\n", argv[0]);
         exit(1);
     }
     *queue_size = atoi(argv[3]);
+    if (*queue_size <= 0){
+        fprintf(stderr, "Not a valid queue size\n");
+        exit(1);
+    }
+    printf("\n\nqueue num is %d\n\n", *queue_size);
+
 }
 // TODO: HW3 — Initialize thread pool and request queue
 // This server currently handles all requests in the main thread.
@@ -109,22 +121,37 @@ void update_finish_request(queue_t *q){
     pthread_mutex_unlock(&q->lock);
 }
 
+void timeval_diff(struct timeval *result, struct timeval *end, struct timeval *start) {
+    result->tv_sec = end->tv_sec - start->tv_sec;
+    result->tv_usec = end->tv_usec - start->tv_usec;
+    if (result->tv_usec < 0) {
+        result->tv_sec--;
+        result->tv_usec += 1000000;
+    }
+}
+
+
 void *worker_thread(void* arg){
     /* todo remove condition */
-    int i = 0;
+    int index = *((int*)arg);   // extract thread index
+    free(arg);
     threads_stats t = malloc(sizeof(struct Threads_stats));
-    t->id = pthread_self();             // Thread ID (placeholder)
+    t->id = index;             // Thread ID (placeholder)
     t->stat_req = 0;       // Static request count
     t->dynm_req = 0;       // Dynamic request count
     t->total_req = 0;      // Total request count
+    t->post_req = 0;
+    struct timeval current_time;
     struct timeval dispatch;
     while(1){
         request_t* request = remove_from_queue(&request_queue);
-        gettimeofday(&dispatch, NULL);
-        int connfd = request->connfd;
+        gettimeofday(&current_time, NULL);
         struct timeval arrival = request->arrival_time;
+        timeval_diff(&dispatch, &current_time, &arrival);
+        int connfd = request->connfd;
         requestHandle(connfd, arrival, dispatch, t, log_request);
         update_finish_request(&request_queue);
+        close(connfd);
         free(request);
     }
     return NULL;
@@ -132,6 +159,7 @@ void *worker_thread(void* arg){
 
 int main(int argc, char *argv[])
 {
+    printf("\n\ncheck check\n\n");
     // Create the global server log_request
     log_request = create_log();
     int listenfd, connfd, port, clientlen;
@@ -146,7 +174,9 @@ int main(int argc, char *argv[])
 
     int i;
     for (i = 0; i < thread_num ; i++){
-        if (pthread_create(&pool[i], NULL, worker_thread, NULL) != 0){
+        int *thread_index = malloc(sizeof(int));
+        *thread_index = i + 1;
+        if (pthread_create(&pool[i], NULL, worker_thread, thread_index) != 0){
             exit(-1);
         }
     }
