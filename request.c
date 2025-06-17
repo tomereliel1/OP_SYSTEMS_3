@@ -232,7 +232,7 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch, thre
             t_stats->dynm_req += 1;
             requestServeDynamic(fd, filename, cgiargs, arrival, dispatch, t_stats);
         }
-        char buff[MAXBUF];
+        char buff[MAXBUF] = "";
         int length = append_stats(buff, t_stats, arrival, dispatch);
         add_to_log(log, buff, length);
         // TODO: add log entry using add_to_log(server_log log, const char* data, int data_len);

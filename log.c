@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 #include "log.h"
 
 #define INIT_BUFFER_SIZE 1024
@@ -11,7 +12,6 @@ struct Server_Log {
     int current_size;             // Actual data length
     int total_capacity;         // Allocated buffer size
 
-    // Reader-writer lock with writer priority
     pthread_mutex_t lock;
     pthread_cond_t read_allowed;
     pthread_cond_t write_allowed;
@@ -24,14 +24,16 @@ struct Server_Log {
 server_log create_log() {
     server_log log = malloc(sizeof(struct Server_Log));
     if (!log) {
-        return NULL;
+        fprintf(stderr, "log allocation failed\n");
+        exit(1);
     }
     log->total_capacity = INIT_BUFFER_SIZE;
     log->current_size = 0;
     log->buffer = malloc(INIT_BUFFER_SIZE);
     if (!log->buffer) {
         free(log);
-        return NULL;
+        fprintf(stderr, "log's buffer allocation failed\n");
+        exit(1);
     }
     log->buffer[0] = '\0';
 
@@ -43,8 +45,6 @@ server_log create_log() {
     log->writers_inside = 0;
     log->writers_waiting = 0;
     return log;
-    // TODO: Allocate and initialize internal log structure
-    return (server_log)malloc(sizeof(struct Server_Log));
 }
 
 // Destroys and frees the log (stub)
@@ -66,7 +66,7 @@ void destroy_log(server_log log) {
 int get_log(server_log log, char** dst) {
     // TODO: Return the full contents of the log as a dynamically allocated string
     // This function should handle concurrent access
-    printf("we are doing gettttttttttttttttttttt size is %d\n\n\n\n\n\n\n\n" ,log->current_size);
+    //printf("we are doing gettttttttttttttttttttt size is %d\n\n\n\n\n\n\n\n" ,log->current_size);
     pthread_mutex_lock(&log->lock);
     while (log->writers_inside > 0 || log->writers_waiting > 0){
         pthread_cond_wait(&log->read_allowed, &log->lock);
@@ -78,7 +78,10 @@ int get_log(server_log log, char** dst) {
     int len = strlen(dummy);
      */
     *dst = (char*)malloc(log->current_size + 1); // Allocate for caller
-    if (*dst != NULL) {
+    if (!dst){
+        fprintf(stderr, "answer string allocation failed\n");
+        exit(1);
+    } else {
         strcpy(*dst, log->buffer);
     }
     pthread_mutex_lock(&log->lock);
@@ -86,14 +89,13 @@ int get_log(server_log log, char** dst) {
     if(log->readers_inside == 0){
         pthread_cond_signal(&log->write_allowed);
     }
-    pthread_mutex_unlock();
+    pthread_mutex_unlock(&log->lock);
     return log->current_size;
-
-
 }
 
 // Appends a new entry to the log (no-op stub)
 void add_to_log(server_log log, const char* data, int data_len) {
+    //printf(" add to log %d \n" , data_len);
     pthread_mutex_lock(&log->lock);
     log->writers_waiting++;
     while(log->readers_inside > 0 || log->writers_inside > 0){

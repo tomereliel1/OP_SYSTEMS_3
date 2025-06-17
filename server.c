@@ -12,7 +12,7 @@
 // Most of the work is done within routines written in request.c
 //
 
-// Parses command-line arguments
+// Parses command-line arguments and check validity og inputs
 void getargs(int *port, int argc, char *argv[])
 {
     if (argc < 2) {
@@ -20,7 +20,7 @@ void getargs(int *port, int argc, char *argv[])
         exit(1);
     }
     *port = atoi(argv[1]);
-    printf("\n\nport is %d\n\n", *port);
+    //printf("\n\nport is %d\n\n", *port);
 }
 
 void get_thread_number(int *thread_num, int argc, char *argv[])
@@ -34,7 +34,7 @@ void get_thread_number(int *thread_num, int argc, char *argv[])
         fprintf(stderr, "Not a valid thread num\n");
         exit(1);
     }
-    printf("\n\nthread num is %d\n\n", *thread_num);
+    //printf("\n\nthread num is %d\n\n", *thread_num);
 }
 void get_queue_size(int *queue_size, int argc, char *argv[])
 {
@@ -47,19 +47,24 @@ void get_queue_size(int *queue_size, int argc, char *argv[])
         fprintf(stderr, "Not a valid queue size\n");
         exit(1);
     }
-    printf("\n\nqueue num is %d\n\n", *queue_size);
+    //printf("\n\nqueue num is %d\n\n", *queue_size);
 
 }
-// TODO: HW3 — Initialize thread pool and request queue
-// This server currently handles all requests in the main thread.
-// You must implement a thread pool (fixed number of worker threads)
-// that process requests from a synchronized queue.
 
+// end input checks
+
+
+// Request struct
 
 typedef struct {
     int connfd;
     struct timeval arrival_time;
 } request_t;
+
+//end Request struct
+
+
+// Request Queue
 
 typedef struct {
     request_t **requests;
@@ -78,6 +83,10 @@ server_log log_request;
 
 void init_queue(queue_t* q, int size){
     q->requests = (request_t **) malloc(sizeof(request_t *) * size);
+    if(!q->requests){
+        fprintf(stderr, "queue allocation failed\n");
+        exit(1);
+    }
     q->front = 0;
     q->rear = 0;
     q->size_active = 0;
@@ -86,6 +95,13 @@ void init_queue(queue_t* q, int size){
     pthread_mutex_init(&q->lock, NULL);
     pthread_cond_init(&q->not_empty, NULL);
     pthread_cond_init(&q->not_full, NULL);
+}
+
+void destroy_queue(queue_t* q){
+    pthread_mutex_destroy(&q->lock);
+    pthread_cond_destroy(&q->not_empty);
+    pthread_cond_destroy(&q->not_full);
+    free(q->requests);
 }
 
 void append_to_queue(queue_t *q, request_t* request){
@@ -121,6 +137,8 @@ void update_finish_request(queue_t *q){
     pthread_mutex_unlock(&q->lock);
 }
 
+// end Request Queue
+
 void timeval_diff(struct timeval *result, struct timeval *end, struct timeval *start) {
     result->tv_sec = end->tv_sec - start->tv_sec;
     result->tv_usec = end->tv_usec - start->tv_usec;
@@ -136,6 +154,10 @@ void *worker_thread(void* arg){
     int index = *((int*)arg);   // extract thread index
     free(arg);
     threads_stats t = malloc(sizeof(struct Threads_stats));
+    if (!t){
+        fprintf(stderr, "thread %d stats allocation failed\n", index);
+        exit(1);
+    }
     t->id = index;             // Thread ID (placeholder)
     t->stat_req = 0;       // Static request count
     t->dynm_req = 0;       // Dynamic request count
@@ -154,12 +176,13 @@ void *worker_thread(void* arg){
         close(connfd);
         free(request);
     }
+    free(t);
     return NULL;
 }
 
 int main(int argc, char *argv[])
 {
-    printf("\n\ncheck check\n\n");
+    //printf("\n\ncheck check\n\n");
     // Create the global server log_request
     log_request = create_log();
     int listenfd, connfd, port, clientlen;
@@ -171,16 +194,23 @@ int main(int argc, char *argv[])
     get_queue_size(&queue_size, argc, argv);
     init_queue(&request_queue, queue_size);
     pthread_t* pool = (pthread_t*) malloc(sizeof(pthread_t) * thread_num);
-
+    if (!pool){
+        fprintf(stderr, "thread pool allocation failed\n");
+        exit(1);
+    }
     int i;
     for (i = 0; i < thread_num ; i++){
         int *thread_index = malloc(sizeof(int));
+        if (!thread_index){
+            fprintf(stderr, "thread index allocation failed\n");
+            exit(1);
+        }
         *thread_index = i + 1;
         if (pthread_create(&pool[i], NULL, worker_thread, thread_index) != 0){
-            exit(-1);
+            fprintf(stderr, "thread %d creation failed\n", i+1);
+            exit(1);
         }
     }
-
 
 
     listenfd = Open_listenfd(port);
@@ -190,11 +220,19 @@ int main(int argc, char *argv[])
         struct timeval arrival;
         gettimeofday(&arrival, NULL);
         request_t *request = (request_t *)malloc(sizeof(request_t));
+        if (!request){
+            fprintf(stderr, "request allocation failed\n");
+            exit(1);
+        }
         request->connfd = connfd;
         request->arrival_time = arrival;
         append_to_queue(&request_queue, request);
         // TODO: HW3 — Record the request arrival time here
     }
+    free(pool);
+    destroy_queue(&request_queue);
+    destroy_log(log_request);
+
 }
 
 /*
@@ -229,3 +267,10 @@ int main(int argc, char *argv[])
 worker()
 
  */
+
+
+
+// TODO: HW3 — Initialize thread pool and request queue
+// This server currently handles all requests in the main thread.
+// You must implement a thread pool (fixed number of worker threads)
+// that process requests from a synchronized queue.
